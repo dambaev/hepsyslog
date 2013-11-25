@@ -73,20 +73,24 @@ loggerWorker ident = do
             procRunning
         Just LogStop -> do
             spawn $! procForker forkOS $! proc $! 
-                _intSyslog ident Info "syslog client stopped"
+                _intSyslogInfo ident Info "syslog client stopped"
             procFinished
         
         Just (LogError string) -> do
             spawn $! procForker forkOS $! proc $!
-                _intSyslog ident Error string
+                _intSyslogError ident Error string
             procRunning
         Just (LogInfo string) -> do
             spawn $! procForker forkOS $! 
-                proc $!  _intSyslog ident Info string
+                proc $!  _intSyslogInfo ident Info string
             procRunning
         
-_intSyslog:: String-> Priority-> String-> HEP HEPProcState
-_intSyslog ident prio s = do
-    liftIO $! useSyslog ident $! syslog prio s
+_intSyslogError:: String-> Priority-> String-> HEP HEPProcState
+_intSyslogError ident prio s = do
+    liftIO $! withSyslog ident [PID, PERROR] USER $! syslog prio s
     procFinished
     
+_intSyslogInfo:: String-> Priority-> String-> HEP HEPProcState
+_intSyslogInfo ident prio s = do
+    liftIO $! withSyslog ident [PID] USER $! syslog prio s
+    procFinished
