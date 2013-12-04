@@ -27,6 +27,12 @@ data LogAnswer = LogAnswerOK
 
 instance Message LoggerMessage
 
+data LoggerState = LoggerState
+    { loggerDone:: Bool
+    }
+    deriving Typeable
+instance HEPLocalState LoggerState
+
 pid = "HEPSysLogger"
 
 startSyslogSupervisor:: String-> HEPProc-> HEP Pid
@@ -58,6 +64,9 @@ stopSyslog = send (toPid pid) LogStop
 loggerInit = do
     p <- self
     send p $! LogInfo "syslog client started"
+    setLocalState $! Just $! LoggerState
+        { loggerDone = False
+        }
     procRunning
 
 loggerShutdown = do
@@ -65,25 +74,36 @@ loggerShutdown = do
 
 loggerWorker:: String-> HEP HEPProcState
 loggerWorker ident = do
-    msg <- receive
-    case fromMessage msg of
-        Nothing-> procRunning
-        Just (LogPing outbox) -> do
-            liftIO $! sendMBox outbox LogAnswerOK
-            procRunning
-        Just LogStop -> do
-            spawn $! procForker forkOS $! proc $! 
-                _intSyslogInfo ident Info "syslog client stopped"
-            procFinished
-        
-        Just (LogError string) -> do
-            spawn $! procForker forkOS $! proc $!
-                _intSyslogError ident Error string
-            procRunning
-        Just (LogInfo string) -> do
-            spawn $! procForker forkOS $! 
-                proc $!  _intSyslogInfo ident Info string
-            procRunning
+    mmsg <- receiveAfter 2000
+    case mmsg of
+        Nothing -> do
+            Just ls <- localState
+            case loggerDone ls of
+                False-> procRunning
+                _ -> do
+                    spawn $! procForker forkOS $! proc $! 
+                        _intSyslogInfo ident Info "syslog client stopped"
+                    procFinished
+        Just msg -> 
+            case fromMessage msg of
+                Nothing-> procRunning
+                Just (LogPing outbox) -> do
+                    liftIO $! sendMBox outbox LogAnswerOK
+                    procRunning
+                Just LogStop -> do
+                    Just ls <- localState
+                    setLocalState $! Just $! ls
+                        { loggerDone = True
+                        }
+                    procRunning
+                Just (LogError string) -> do
+                    spawn $! procForker forkOS $! proc $!
+                        _intSyslogError ident Error string
+                    procRunning
+                Just (LogInfo string) -> do
+                    spawn $! procForker forkOS $! 
+                        proc $!  _intSyslogInfo ident Info string
+                    procRunning
         
 _intSyslogError:: String-> Priority-> String-> HEP HEPProcState
 _intSyslogError ident prio s = do
