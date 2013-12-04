@@ -7,15 +7,16 @@ module Control.Concurrent.HEP.Syslog
     , syslogError
     , syslogInfo
     , stopSyslog
+    , Control.Concurrent.HEP.Syslog.withSyslog
     )
     where
 
-import Control.Concurrent.HEP
+import Control.Concurrent.HEP as H
 import Control.Concurrent
 import Data.Typeable
 import Control.Monad.Trans
 import Control.Monad
-import System.Posix.Syslog
+import System.Posix.Syslog as S
 
 data LoggerMessage = LogError String
                    | LogInfo String
@@ -107,10 +108,19 @@ loggerWorker ident = do
         
 _intSyslogError:: String-> Priority-> String-> HEP HEPProcState
 _intSyslogError ident prio s = do
-    liftIO $! withSyslog ident [PID, PERROR] USER $! syslog prio s
+    liftIO $! S.withSyslog ident [PID, PERROR] USER $! syslog prio s
     procFinished
     
 _intSyslogInfo:: String-> Priority-> String-> HEP HEPProcState
 _intSyslogInfo ident prio s = do
-    liftIO $! withSyslog ident [PID] USER $! syslog prio s
+    liftIO $! S.withSyslog ident [PID] USER $! syslog prio s
     procFinished
+
+withSyslog:: String-> HEPProcOptions -> HEPProcOptions
+withSyslog ident child = do
+    let childInit = heppInit child
+        childShutdown = heppShutdown child
+    child
+        { heppInit = (startSyslog ident >> childInit)
+        , heppShutdown = (childShutdown >>= \x-> (stopSyslog >> return x))
+        }
