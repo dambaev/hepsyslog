@@ -36,6 +36,9 @@ instance HEPLocalState LoggerState
 
 pid = "HEPSysLogger"
 
+{-
+ - API function
+ -}
 startSyslogSupervisor:: String-> HEPProc-> HEP Pid
 startSyslogSupervisor ident sv = do
     !pid <- spawn $! procWithSupervisor (proc sv) $! 
@@ -63,6 +66,7 @@ syslogError s = send (toPid pid)  $! LogError s
 stopSyslog = send (toPid pid) LogStop
 
 loggerInit = do
+    register "syslogClient"
     p <- self
     send p $! LogInfo "syslog client started"
     setLocalState $! Just $! LoggerState
